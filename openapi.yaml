@@ -1,0 +1,922 @@
+openapi: 3.0.3
+info:
+  title: AI Voice Loan Agent API
+  description: RESTful API for managing voice calls, leads, configuration, and analytics for the AI Voice Loan Agent system
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@voiceloanagent.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8000
+    description: Development server
+  - url: https://api.voiceloanagent.com
+    description: Production server
+
+security:
+  - BearerAuth: []
+  - ApiKeyAuth: []
+
+paths:
+  /api/v1/calls/outbound:
+    post:
+      summary: Initiate outbound call
+      description: Initiates an outbound call to a lead's phone number
+      tags:
+        - Call Management
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OutboundCallRequest"
+      responses:
+        "201":
+          description: Call initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/RateLimit"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/calls/inbound/webhook:
+    post:
+      summary: Handle inbound call webhook
+      description: Webhook endpoint for Twilio to handle inbound calls
+      tags:
+        - Call Management
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/TwilioWebhook"
+      responses:
+        "200":
+          description: TwiML response
+          content:
+            application/xml:
+              schema:
+                type: string
+                example: |
+                  <?xml version="1.0" encoding="UTF-8"?>
+                  <Response>
+                      <Say voice="alice" language="en-IN">Hello! I'm your AI loan advisor.</Say>
+                  </Response>
+
+  /api/v1/calls/{call_id}/hangup:
+    post:
+      summary: End call
+      description: Terminates an active call
+      tags:
+        - Call Management
+      parameters:
+        - name: call_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique identifier for the call
+      responses:
+        "200":
+          description: Call ended successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/calls/{call_id}:
+    get:
+      summary: Get call details
+      description: Retrieves detailed information about a specific call
+      tags:
+        - Call Management
+      parameters:
+        - name: call_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique identifier for the call
+      responses:
+        "200":
+          description: Call details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallDetails"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/calls:
+    get:
+      summary: List calls
+      description: Retrieves a paginated list of calls with optional filters
+      tags:
+        - Call Management
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [initiated, connected, completed, failed]
+        - name: direction
+          in: query
+          schema:
+            type: string
+            enum: [inbound, outbound]
+        - name: date_from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: date_to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: language
+          in: query
+          schema:
+            type: string
+            enum: [hinglish, english, telugu]
+      responses:
+        "200":
+          description: Calls retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallsList"
+
+  /api/v1/leads:
+    get:
+      summary: List leads
+      description: Retrieves a paginated list of leads with optional filters
+      tags:
+        - Lead Management
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [new, qualified, handoff, callback, unreachable, converted]
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum: [public_secured, private_unsecured, intl_usd, escalate]
+        - name: country
+          in: query
+          schema:
+            type: string
+        - name: urgency
+          in: query
+          schema:
+            type: string
+            enum: [high, medium, low]
+      responses:
+        "200":
+          description: Leads retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadsList"
+
+  /api/v1/leads/{lead_id}:
+    get:
+      summary: Get lead details
+      description: Retrieves detailed information about a specific lead
+      tags:
+        - Lead Management
+      parameters:
+        - name: lead_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Lead details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadDetails"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      summary: Update lead
+      description: Updates lead information
+      tags:
+        - Lead Management
+      parameters:
+        - name: lead_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeadUpdateRequest"
+      responses:
+        "200":
+          description: Lead updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadUpdateResponse"
+
+  /api/v1/leads/{lead_id}/handoff:
+    post:
+      summary: Trigger handoff
+      description: Initiates handoff process to human expert
+      tags:
+        - Lead Management
+      parameters:
+        - name: lead_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HandoffRequest"
+      responses:
+        "201":
+          description: Handoff initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HandoffResponse"
+
+  /api/v1/config/prompts:
+    get:
+      summary: Get voice prompts
+      description: Retrieves voice prompts by language and state
+      tags:
+        - Configuration
+      parameters:
+        - name: language
+          in: query
+          schema:
+            type: string
+            enum: [hinglish, english, telugu]
+        - name: state
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Prompts retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromptsList"
+    put:
+      summary: Update prompts
+      description: Updates voice prompts for specific states and languages
+      tags:
+        - Configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromptsUpdateRequest"
+      responses:
+        "200":
+          description: Prompts updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromptsUpdateResponse"
+
+  /api/v1/config/flows:
+    get:
+      summary: Get conversation flows
+      description: Retrieves conversation flow configurations
+      tags:
+        - Configuration
+      responses:
+        "200":
+          description: Flows retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FlowsList"
+
+  /api/v1/analytics/metrics:
+    get:
+      summary: Get KPI metrics
+      description: Retrieves key performance indicator metrics
+      tags:
+        - Analytics
+      parameters:
+        - name: date_from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: date_to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: granularity
+          in: query
+          schema:
+            type: string
+            enum: [hour, day, week, month]
+      responses:
+        "200":
+          description: Metrics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KPIMetrics"
+
+  /api/v1/analytics/calls:
+    get:
+      summary: Get call analytics
+      description: Retrieves detailed call analytics with aggregations
+      tags:
+        - Analytics
+      parameters:
+        - name: date_from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: date_to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: group_by
+          in: query
+          schema:
+            type: string
+            enum: [hour, day, language, country, status]
+        - name: metrics
+          in: query
+          schema:
+            type: string
+            description: Comma-separated metrics (volume, duration, completion_rate)
+      responses:
+        "200":
+          description: Analytics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallAnalytics"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    OutboundCallRequest:
+      type: object
+      required:
+        - phone_number
+      properties:
+        phone_number:
+          type: string
+          pattern: '^\+[1-9]\d{1,14}$'
+          example: "+919876543210"
+        lead_source:
+          type: string
+          example: "facebook_ad"
+        preferred_language:
+          type: string
+          enum: [hinglish, english, telugu]
+          default: hinglish
+        metadata:
+          type: object
+          additionalProperties: true
+
+    CallResponse:
+      type: object
+      properties:
+        call_id:
+          type: string
+          example: "call_abc123def456"
+        lead_id:
+          type: string
+          example: "lead_xyz789abc123"
+        status:
+          type: string
+          enum: [initiated, connected, completed, failed]
+        created_at:
+          type: string
+          format: date-time
+        estimated_callback_time:
+          type: string
+          format: date-time
+
+    CallDetails:
+      type: object
+      properties:
+        call_id:
+          type: string
+        lead_id:
+          type: string
+        call_sid:
+          type: string
+        direction:
+          type: string
+          enum: [inbound, outbound]
+        status:
+          type: string
+          enum: [initiated, connected, completed, failed]
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        duration:
+          type: integer
+          description: Duration in seconds
+        recording_url:
+          type: string
+          format: uri
+        transcript_url:
+          type: string
+          format: uri
+        consent_given:
+          type: boolean
+        retry_count:
+          type: integer
+        language:
+          type: string
+          enum: [hinglish, english, telugu]
+        sentiment_score:
+          type: number
+          minimum: -1
+          maximum: 1
+        qualification_completed:
+          type: boolean
+
+    CallsList:
+      type: object
+      properties:
+        calls:
+          type: array
+          items:
+            $ref: "#/components/schemas/CallSummary"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+
+    CallSummary:
+      type: object
+      properties:
+        call_id:
+          type: string
+        lead_id:
+          type: string
+        direction:
+          type: string
+          enum: [inbound, outbound]
+        status:
+          type: string
+        start_time:
+          type: string
+          format: date-time
+        duration:
+          type: integer
+        language:
+          type: string
+        qualification_completed:
+          type: boolean
+
+    LeadsList:
+      type: object
+      properties:
+        leads:
+          type: array
+          items:
+            $ref: "#/components/schemas/LeadSummary"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+
+    LeadSummary:
+      type: object
+      properties:
+        lead_id:
+          type: string
+        name:
+          type: string
+        phone:
+          type: string
+        language:
+          type: string
+        country:
+          type: string
+        degree:
+          type: string
+        loan_amount:
+          type: number
+        eligibility_category:
+          type: string
+        urgency:
+          type: string
+        status:
+          type: string
+        sentiment_score:
+          type: number
+        created_at:
+          type: string
+          format: date-time
+
+    LeadDetails:
+      allOf:
+        - $ref: "#/components/schemas/LeadSummary"
+        - type: object
+          properties:
+            offer_letter:
+              type: string
+              enum: [yes, no]
+            coapplicant_itr:
+              type: string
+              enum: [yes, no]
+            collateral:
+              type: string
+              enum: [yes, no]
+            visa_timeline:
+              type: string
+            lead_source:
+              type: string
+            updated_at:
+              type: string
+              format: date-time
+            calls:
+              type: array
+              items:
+                $ref: "#/components/schemas/CallSummary"
+            metadata:
+              type: object
+              additionalProperties: true
+
+    LeadUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          enum: [new, qualified, handoff, callback, unreachable, converted]
+        notes:
+          type: string
+
+    LeadUpdateResponse:
+      type: object
+      properties:
+        lead_id:
+          type: string
+        updated_fields:
+          type: array
+          items:
+            type: string
+        updated_at:
+          type: string
+          format: date-time
+
+    HandoffRequest:
+      type: object
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          enum:
+            [
+              customer_request,
+              negative_sentiment,
+              unclear_responses,
+              complex_case,
+            ]
+        expert_id:
+          type: string
+        priority:
+          type: string
+          enum: [low, medium, high, urgent]
+        notes:
+          type: string
+
+    HandoffResponse:
+      type: object
+      properties:
+        handoff_id:
+          type: string
+        lead_id:
+          type: string
+        expert_id:
+          type: string
+        status:
+          type: string
+          enum: [queued, assigned, in_progress, completed]
+        estimated_callback_time:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    TwilioWebhook:
+      type: object
+      properties:
+        CallSid:
+          type: string
+        AccountSid:
+          type: string
+        From:
+          type: string
+        To:
+          type: string
+        CallStatus:
+          type: string
+        Direction:
+          type: string
+        Duration:
+          type: string
+        RecordingUrl:
+          type: string
+        Timestamp:
+          type: string
+
+    PromptsList:
+      type: object
+      properties:
+        prompts:
+          type: array
+          items:
+            $ref: "#/components/schemas/VoicePrompt"
+
+    VoicePrompt:
+      type: object
+      properties:
+        prompt_id:
+          type: string
+        state:
+          type: string
+        language:
+          type: string
+        text:
+          type: string
+        audio_url:
+          type: string
+          format: uri
+        version:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    PromptsUpdateRequest:
+      type: object
+      properties:
+        prompts:
+          type: array
+          items:
+            type: object
+            properties:
+              prompt_id:
+                type: string
+              text:
+                type: string
+              regenerate_audio:
+                type: boolean
+
+    PromptsUpdateResponse:
+      type: object
+      properties:
+        updated_prompts:
+          type: array
+          items:
+            type: object
+            properties:
+              prompt_id:
+                type: string
+              status:
+                type: string
+              audio_generation_status:
+                type: string
+
+    FlowsList:
+      type: object
+      properties:
+        flows:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConversationFlow"
+
+    ConversationFlow:
+      type: object
+      properties:
+        flow_id:
+          type: string
+        name:
+          type: string
+        states:
+          type: array
+          items:
+            type: string
+        transitions:
+          type: object
+          additionalProperties:
+            type: string
+        version:
+          type: string
+        active:
+          type: boolean
+
+    KPIMetrics:
+      type: object
+      properties:
+        metrics:
+          type: object
+          properties:
+            call_volume:
+              type: object
+              properties:
+                total:
+                  type: integer
+                inbound:
+                  type: integer
+                outbound:
+                  type: integer
+            completion_rate:
+              type: number
+            qualification_time_avg:
+              type: number
+            handoff_rate:
+              type: number
+            sentiment_distribution:
+              type: object
+              properties:
+                positive:
+                  type: number
+                neutral:
+                  type: number
+                negative:
+                  type: number
+            language_usage:
+              type: object
+              additionalProperties:
+                type: number
+            eligibility_categories:
+              type: object
+              additionalProperties:
+                type: number
+        period:
+          type: object
+          properties:
+            from:
+              type: string
+              format: date-time
+            to:
+              type: string
+              format: date-time
+
+    CallAnalytics:
+      type: object
+      properties:
+        analytics:
+          type: array
+          items:
+            type: object
+            properties:
+              dimension:
+                type: string
+              call_volume:
+                type: integer
+              avg_duration:
+                type: number
+              completion_rate:
+                type: number
+              handoff_rate:
+                type: number
+        summary:
+          type: object
+          properties:
+            total_calls:
+              type: integer
+            avg_completion_rate:
+              type: number
+            avg_duration:
+              type: number
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        pages:
+          type: integer
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+        request_id:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    RateLimit:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+tags:
+  - name: Call Management
+    description: Operations for managing voice calls
+  - name: Lead Management
+    description: Operations for managing leads and customer data
+  - name: Configuration
+    description: Operations for managing system configuration
+  - name: Analytics
+    description: Operations for retrieving analytics and metrics

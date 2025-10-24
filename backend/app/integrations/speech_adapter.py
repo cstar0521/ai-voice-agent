@@ -101,6 +101,30 @@ class SpeechAdapter(ABC):
         pass
     
     @abstractmethod
+    async def synthesize_speech_with_cache(
+        self,
+        text: str,
+        language: str = "hi-IN",
+        voice_gender: VoiceGender = VoiceGender.FEMALE,
+        speaking_rate: float = 1.0,
+        use_cache: bool = True
+    ) -> Optional[str]:
+        """
+        Convert text to speech with caching support.
+        
+        Args:
+            text: Text to synthesize
+            language: Language code
+            voice_gender: Voice gender preference
+            speaking_rate: Speech rate (0.5 to 2.0)
+            use_cache: Whether to use audio caching
+            
+        Returns:
+            Audio URL (cached or newly generated)
+        """
+        pass
+    
+    @abstractmethod
     async def detect_language(
         self,
         audio_data: bytes,

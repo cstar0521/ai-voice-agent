@@ -47,6 +47,14 @@ class Settings(BaseSettings):
     alert_email_to: str = ""  # Comma-separated list
     slack_webhook_url: Optional[str] = None
     
+    # Audio Caching
+    audio_cache_enabled: bool = True
+    audio_cache_base_url: Optional[str] = None
+    cloud_provider: str = "local"  # local, gcp, aws
+    gcs_bucket_name: Optional[str] = None
+    s3_bucket_name: Optional[str] = None
+    base_url: str = "http://localhost:8000"
+    
     # Environment
     environment: str = "development"
     base_url: str = "http://localhost:8000"
