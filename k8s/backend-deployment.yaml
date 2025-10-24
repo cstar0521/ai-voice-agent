@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: voice-agent
+  labels:
+    app: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          image: your-registry/voice-agent-backend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: MONGODB_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: voice-agent-config
+                  key: MONGODB_URI
+            - name: ENVIRONMENT
+              valueFrom:
+                configMapKeyRef:
+                  name: voice-agent-config
+                  key: ENVIRONMENT
+            - name: SPEECH_PROVIDER
+              valueFrom:
+                configMapKeyRef:
+                  name: voice-agent-config
+                  key: SPEECH_PROVIDER
+            - name: SARVAM_API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: voice-agent-config
+                  key: SARVAM_API_URL
+            - name: TWILIO_ACCOUNT_SID
+              valueFrom:
+                secretKeyRef:
+                  name: voice-agent-secrets
+                  key: TWILIO_ACCOUNT_SID
+            - name: TWILIO_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: voice-agent-secrets
+                  key: TWILIO_AUTH_TOKEN
+            - name: TWILIO_PHONE_NUMBER
+              valueFrom:
+                secretKeyRef:
+                  name: voice-agent-secrets
+                  key: TWILIO_PHONE_NUMBER
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: voice-agent-secrets
+                  key: OPENAI_API_KEY
+            - name: SARVAM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: voice-agent-secrets
+                  key: SARVAM_API_KEY
+            - name: SUPRSEND_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: voice-agent-secrets
+                  key: SUPRSEND_API_KEY
+            - name: GUPSHUP_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: voice-agent-secrets
+                  key: GUPSHUP_API_KEY
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: voice-agent-secrets
+                  key: JWT_SECRET_KEY
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: voice-agent-secrets
+                  key: API_KEY
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: voice-agent
+  labels:
+    app: backend
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: 8000
+      protocol: TCP
+      name: http
+  selector:
+    app: backend

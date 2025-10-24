@@ -1,24 +1,30 @@
-version: '3.8'
+version: "3.8"
 
 services:
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
+    container_name: voice-agent-frontend
     ports:
       - "3000:3000"
     environment:
       - REACT_APP_API_URL=http://localhost:8000
+      - NODE_ENV=development
     volumes:
       - ./frontend:/app
       - /app/node_modules
     depends_on:
       - backend
+    networks:
+      - voice-agent-network
+    restart: unless-stopped
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    container_name: voice-agent-backend
     ports:
       - "8000:8000"
     environment:
@@ -27,21 +33,47 @@ services:
       - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
       - TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - SPEECH_PROVIDER=${SPEECH_PROVIDER:-sarvam_ai}
+      - SARVAM_API_KEY=${SARVAM_API_KEY}
+      - SARVAM_API_URL=${SARVAM_API_URL:-https://api.sarvam.ai/v1}
+      - SUPRSEND_API_KEY=${SUPRSEND_API_KEY}
+      - GUPSHUP_API_KEY=${GUPSHUP_API_KEY}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - API_KEY=${API_KEY}
       - ENVIRONMENT=development
     volumes:
       - ./backend:/app
     depends_on:
-      - mongo
+      mongo:
+        condition: service_healthy
+    networks:
+      - voice-agent-network
+    restart: unless-stopped
+    command:
+      ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
   mongo:
     image: mongo:6.0
+    container_name: voice-agent-mongo
     ports:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
     environment:
       - MONGO_INITDB_DATABASE=voice_agent
+    networks:
+      - voice-agent-network
+    restart: unless-stopped
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/voice_agent --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+networks:
+  voice-agent-network:
+    driver: bridge
 
 volumes:
   mongo_data:

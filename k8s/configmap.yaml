@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: voice-agent-config
+  namespace: voice-agent
+data:
+  ENVIRONMENT: "production"
+  SPEECH_PROVIDER: "sarvam_ai"
+  SARVAM_API_URL: "https://api.sarvam.ai/v1"
+  # MongoDB URI should use the service name
+  MONGODB_URI: "mongodb://mongo-service:27017/voice_agent"
+  # Frontend API URL - update with your actual domain
+  REACT_APP_API_URL: "https://api.yourdomain.com"

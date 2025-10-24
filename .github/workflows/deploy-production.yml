@@ -1,0 +1,169 @@
+name: Deploy to Production
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to deploy (e.g., v1.0.0)"
+        required: true
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME_BACKEND: ${{ github.repository }}/backend
+  IMAGE_NAME_FRONTEND: ${{ github.repository }}/frontend
+
+jobs:
+  approve:
+    runs-on: ubuntu-latest
+    environment:
+      name: production-approval
+    steps:
+      - name: Manual approval required
+        run: echo "Deployment to production requires manual approval"
+
+  deploy:
+    needs: approve
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://yourdomain.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.version || github.event.release.tag_name }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: "latest"
+
+      - name: Configure kubectl
+        run: |
+          echo "${{ secrets.KUBE_CONFIG_PRODUCTION }}" | base64 -d > kubeconfig
+          export KUBECONFIG=./kubeconfig
+
+      - name: Get version tag
+        id: version
+        run: |
+          VERSION=${{ github.event.inputs.version || github.event.release.tag_name }}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Update image tags
+        working-directory: ./k8s
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+
+          # Update backend image
+          sed -i "s|image: .*backend.*|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:${VERSION}|g" backend-deployment.yaml
+
+          # Update frontend image
+          sed -i "s|image: .*frontend.*|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:${VERSION}|g" frontend-deployment.yaml
+
+      - name: Create backup of current deployment
+        run: |
+          export KUBECONFIG=./kubeconfig
+          kubectl get deployment backend -n voice-agent -o yaml > backup-backend-deployment.yaml
+          kubectl get deployment frontend -n voice-agent -o yaml > backup-frontend-deployment.yaml
+
+      - name: Deploy to Kubernetes
+        working-directory: ./k8s
+        run: |
+          export KUBECONFIG=../kubeconfig
+
+          # Apply configurations (skip secrets in production - should be managed separately)
+          kubectl apply -f namespace.yaml
+          kubectl apply -f configmap.yaml
+
+          # Deploy services with rolling update
+          kubectl apply -f mongodb-deployment.yaml
+          kubectl apply -f backend-deployment.yaml
+          kubectl apply -f frontend-deployment.yaml
+          kubectl apply -f ingress.yaml
+          kubectl apply -f hpa.yaml
+
+          # Wait for rollout with timeout
+          kubectl rollout status deployment/backend -n voice-agent --timeout=10m
+          kubectl rollout status deployment/frontend -n voice-agent --timeout=10m
+
+      - name: Verify deployment
+        run: |
+          export KUBECONFIG=./kubeconfig
+
+          # Check pod status
+          kubectl get pods -n voice-agent
+
+          # Check if all pods are running
+          BACKEND_READY=$(kubectl get deployment backend -n voice-agent -o jsonpath='{.status.readyReplicas}')
+          FRONTEND_READY=$(kubectl get deployment frontend -n voice-agent -o jsonpath='{.status.readyReplicas}')
+
+          if [ "$BACKEND_READY" -lt 1 ] || [ "$FRONTEND_READY" -lt 1 ]; then
+            echo "Deployment verification failed"
+            exit 1
+          fi
+
+      - name: Run smoke tests
+        run: |
+          # Wait for services to stabilize
+          sleep 60
+
+          # Test backend health endpoint
+          curl -f https://api.yourdomain.com/health || exit 1
+
+          # Test frontend
+          curl -f https://yourdomain.com || exit 1
+
+          # Test API endpoint
+          curl -f https://api.yourdomain.com/api/v1/config/prompts || exit 1
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          export KUBECONFIG=./kubeconfig
+          echo "Deployment failed, rolling back..."
+          kubectl rollout undo deployment/backend -n voice-agent
+          kubectl rollout undo deployment/frontend -n voice-agent
+          kubectl rollout status deployment/backend -n voice-agent --timeout=5m
+          kubectl rollout status deployment/frontend -n voice-agent --timeout=5m
+
+      - name: Upload backup artifacts
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: deployment-backup-${{ steps.version.outputs.version }}
+          path: |
+            backup-backend-deployment.yaml
+            backup-frontend-deployment.yaml
+          retention-days: 30
+
+      - name: Notify deployment success
+        if: success()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          text: "Production deployment successful - Version ${{ steps.version.outputs.version }}"
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+
+      - name: Notify deployment failure
+        if: failure()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          text: "Production deployment failed - Version ${{ steps.version.outputs.version }}. Rollback initiated."
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+
+      - name: Create deployment record
+        if: success()
+        run: |
+          echo "Deployment completed successfully"
+          echo "Version: ${{ steps.version.outputs.version }}"
+          echo "Timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          echo "Deployed by: ${{ github.actor }}"

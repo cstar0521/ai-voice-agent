@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: voice-agent
+  labels:
+    name: voice-agent
+    environment: production
