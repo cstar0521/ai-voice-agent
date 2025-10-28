@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     sarvam_api_key: Optional[str] = None
     sarvam_api_url: str = "https://api.sarvam.ai/v1"
     
+    # Sarvam AI Model Configuration
+    sarvam_tts_model: str = "bulbul:v1"
+    sarvam_asr_model: str = "saaras:v1"
+    sarvam_voice_speaker: str = "meera"
+    
     # Google Cloud
     google_cloud_project: Optional[str] = None
     google_application_credentials: Optional[str] = None
@@ -57,7 +62,9 @@ class Settings(BaseSettings):
     
     # Environment
     environment: str = "development"
-    base_url: str = "http://localhost:8000"
+    
+    # Webhook URLs (for ngrok in development)
+    webhook_base_url: Optional[str] = None  # Set this to your ngrok URL
     
     class Config:
         env_file = ".env"

@@ -41,7 +41,7 @@ class UserCreate(BaseModel):
 USERS_DB = {
     "admin@example.com": {
         "email": "admin@example.com",
-        "hashed_password": "a1b2c3d4e5f6g7h8$8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",  # admin123
+        "hashed_password": "f11ab012a6adfae2ebef64d83f772b14$d45e8362c4c33e1b14ce4a68a8dab7c950fa99a77da9f43af4a8851f7ac09194",  # admin123
         "role": "admin"
     },
     "codenahiphatega@gmail.com": {
