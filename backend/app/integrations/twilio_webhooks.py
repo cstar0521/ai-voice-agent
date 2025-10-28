@@ -102,12 +102,12 @@ class TwilioWebhookHandler:
             # Map Twilio status to our internal status
             status_mapping = {
                 "initiated": "initiated",
-                "ringing": "ringing",
+                "ringing": "connected",  # Map ringing to connected since call is being established
                 "in-progress": "in_progress",
                 "answered": "connected",
                 "completed": "completed",
                 "failed": "failed",
-                "busy": "busy",
+                "busy": "no_answer",  # Map busy to no_answer since both mean call wasn't answered
                 "no-answer": "no_answer",
                 "canceled": "failed"
             }

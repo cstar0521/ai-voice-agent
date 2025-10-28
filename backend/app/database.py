@@ -34,11 +34,24 @@ class Database:
                 maxPoolSize=50,
                 minPoolSize=10,
                 maxIdleTimeMS=45000,
-                serverSelectionTimeoutMS=5000,
+                serverSelectionTimeoutMS=10000,  # Increased timeout
+                connectTimeoutMS=10000,  # Added connect timeout
+                socketTimeoutMS=10000,   # Added socket timeout
             )
             
-            # Test connection
-            await cls.client.admin.command('ping')
+            # Test connection with retry logic
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    logger.info(f"Testing MongoDB connection (attempt {attempt + 1}/{max_retries})")
+                    await cls.client.admin.command('ping')
+                    break
+                except Exception as e:
+                    if attempt == max_retries - 1:
+                        raise
+                    logger.warning(f"Connection attempt {attempt + 1} failed: {e}. Retrying...")
+                    import asyncio
+                    await asyncio.sleep(1)
             
             # Get database name from URI or use default
             db_name = settings.mongodb_uri.split('/')[-1].split('?')[0] or 'voice_agent'

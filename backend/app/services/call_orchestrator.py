@@ -15,24 +15,19 @@ from app.services.conversation_context import ConversationContextManager
 
 
 class CallState(str, Enum):
-    """Call lifecycle states."""
+    """Call lifecycle states - must match Call model validation."""
     INITIATED = "initiated"
-    DIALING = "dialing"
-    RINGING = "ringing"
     CONNECTED = "connected"
     IN_PROGRESS = "in_progress"
-    ENDING = "ending"
     COMPLETED = "completed"
     FAILED = "failed"
     NO_ANSWER = "no_answer"
-    BUSY = "busy"
-    NETWORK_ERROR = "network_error"
 
 
 class CallEvent(str, Enum):
     """Call events that trigger state transitions."""
     CALL_INITIATED = "call_initiated"
-    CALL_RINGING = "call_ringing"
+    CALL_CONNECTING = "call_connecting"
     CALL_ANSWERED = "call_answered"
     SPEECH_DETECTED = "speech_detected"
     SILENCE_TIMEOUT = "silence_timeout"
@@ -52,9 +47,8 @@ class CallOrchestrator:
     
     # Valid state transitions for call lifecycle
     VALID_TRANSITIONS: Dict[CallState, set] = {
-        CallState.INITIATED: {CallState.DIALING, CallState.FAILED},
-        CallState.DIALING: {CallState.RINGING, CallState.NO_ANSWER, CallState.BUSY, CallState.FAILED},
-        CallState.RINGING: {CallState.CONNECTED, CallState.NO_ANSWER, CallState.FAILED},
+        CallState.INITIATED: {CallState.CONNECTED, CallState.FAILED},
+        CallState.CONNECTED: {CallState.IN_PROGRESS, CallState.COMPLETED, CallState.FAILED},
         CallState.CONNECTED: {CallState.IN_PROGRESS, CallState.ENDING, CallState.FAILED},
         CallState.IN_PROGRESS: {CallState.ENDING, CallState.FAILED, CallState.NETWORK_ERROR},
         CallState.ENDING: {CallState.COMPLETED, CallState.FAILED},
@@ -224,8 +218,8 @@ class CallOrchestrator:
             raise ValueError(f"Call {call_id} not found in active calls")
         
         # Handle different event types
-        if event == CallEvent.CALL_RINGING:
-            await self.transition_state(call_id, CallState.RINGING)
+        if event == CallEvent.CALL_CONNECTING:
+            await self.transition_state(call_id, CallState.CONNECTED)
         
         elif event == CallEvent.CALL_ANSWERED:
             await self.transition_state(call_id, CallState.CONNECTED)

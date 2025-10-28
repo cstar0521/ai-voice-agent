@@ -34,7 +34,12 @@ def get_twilio_adapter() -> TwilioAdapter:
     """Get or create Twilio adapter instance."""
     global _twilio_adapter
     if _twilio_adapter is None:
-        _twilio_adapter = TwilioAdapter()
+        from config import settings
+        _twilio_adapter = TwilioAdapter(
+            account_sid=settings.twilio_account_sid,
+            auth_token=settings.twilio_auth_token,
+            phone_number=settings.twilio_phone_number
+        )
     return _twilio_adapter
 
 
@@ -42,7 +47,7 @@ class OutboundCallRequest(BaseModel):
     """Request model for initiating outbound call."""
     phone_number: str = Field(..., description="Phone number to call")
     lead_source: Optional[str] = Field(None, description="Source of the lead")
-    preferred_language: str = Field("hinglish", description="Preferred language")
+    preferred_language: str = Field("hinglish", description="Preferred language (hinglish, english, telugu, hindi)")
     metadata: dict = Field(default_factory=dict, description="Additional metadata")
 
 
@@ -93,7 +98,14 @@ async def initiate_outbound_call(
     Returns:
         Created call and lead information
     """
-    db = database.get_database()
+    try:
+        db = database.get_database()
+    except RuntimeError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database connection not available. Please try again later."
+        )
+    
     lead_repo = LeadRepository(db)
     call_repo = CallRepository(db)
     
@@ -136,10 +148,11 @@ async def initiate_outbound_call(
             status_callback_url=status_callback_url
         )
         
-        # Update call with Twilio SID
+        # Update call with Twilio SID (let webhooks handle status updates)
         call.call_sid = twilio_call.sid
-        call.status = "ringing"
-        await call_repo.update(call.call_id, call)
+        await call_repo.update(call.call_id, {
+            "call_sid": twilio_call.sid
+        })
         
         logger.info(f"Outbound call initiated: {call.call_id}, Twilio SID: {twilio_call.sid}")
         
@@ -147,7 +160,7 @@ async def initiate_outbound_call(
         logger.error(f"Failed to initiate Twilio call: {str(e)}")
         # Update call status to failed
         call.status = "failed"
-        await call_repo.update(call.call_id, call)
+        await call_repo.update(call.call_id, {"status": "failed"})
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to initiate call: {str(e)}"

@@ -172,13 +172,19 @@ async def startup_event():
         await database.connect()
         logger.info("Database connected successfully")
         
+    except Exception as e:
+        logger.error(f"Failed to connect to database: {e}", exc_info=True)
+        logger.warning("Starting server without database connection. Some features may not work.")
+    
+    try:
         # Start rate limiter cleanup task
         asyncio.create_task(cleanup_rate_limiter())
         logger.info("Rate limiter cleanup task started")
         
     except Exception as e:
-        logger.error(f"Failed to start application: {e}", exc_info=True)
-        raise
+        logger.error(f"Failed to start background tasks: {e}", exc_info=True)
+    
+    logger.info("Application startup complete")
 
 
 @app.on_event("shutdown")

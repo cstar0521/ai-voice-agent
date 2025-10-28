@@ -56,7 +56,7 @@ class Call(BaseModel):
     @classmethod
     def validate_status(cls, v: str) -> str:
         """Validate call status."""
-        allowed = ["initiated", "connected", "in_progress", "completed", "failed", "no_answer"]
+        allowed = ["initiated", "connected", "in_progress", "completed", "failed", "no_answer", "ringing"]
         if v.lower() not in allowed:
             raise ValueError(f"Status must be one of {allowed}")
         return v.lower()

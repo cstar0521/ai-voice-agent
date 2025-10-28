@@ -4,6 +4,13 @@ Simple script to test making an outbound call to a lead.
 """
 import requests
 import json
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Import after loading env vars
 from config import settings
 from app.auth import create_access_token
 
