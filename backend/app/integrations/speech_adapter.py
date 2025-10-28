@@ -123,6 +123,30 @@ class SpeechAdapter(ABC):
             Audio URL (cached or newly generated)
         """
         pass
+
+
+# Factory function to get the appropriate speech adapter
+async def get_speech_adapter() -> SpeechAdapter:
+    """Get the configured speech adapter based on settings."""
+    from config import settings
+    
+    provider = getattr(settings, 'speech_provider', 'sarvam_ai').lower()
+    
+    if provider == 'sarvam_ai':
+        try:
+            from app.integrations.sarvam_speech_adapter import SarvamSpeechAdapter
+            adapter = SarvamSpeechAdapter()
+            if adapter.enabled:
+                return adapter
+        except Exception as e:
+            logger.error(f"Failed to initialize Sarvam AI adapter: {e}")
+    
+    # Fallback to Google Cloud
+    try:
+        return GoogleCloudSpeechAdapter()
+    except Exception as e:
+        logger.error(f"Failed to initialize Google Cloud adapter: {e}")
+        raise Exception("No speech adapter available")
     
     @abstractmethod
     async def detect_language(

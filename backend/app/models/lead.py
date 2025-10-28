@@ -57,10 +57,28 @@ class Lead(BaseModel):
     @classmethod
     def validate_language(cls, v: str) -> str:
         """Validate language is one of supported languages."""
+        # Map common language variations
+        language_map = {
+            "hindi": "hinglish",
+            "hinglish": "hinglish", 
+            "english": "english",
+            "telugu": "telugu",
+            "hi": "hinglish",
+            "en": "english",
+            "te": "telugu",
+            "hi-in": "hinglish",
+            "en-in": "english", 
+            "te-in": "telugu"
+        }
+        
+        normalized = v.lower().replace("-", "").replace("_", "")
+        mapped_language = language_map.get(normalized)
+        
+        if mapped_language:
+            return mapped_language
+        
         allowed = ["hinglish", "english", "telugu"]
-        if v.lower() not in allowed:
-            raise ValueError(f"Language must be one of {allowed}")
-        return v.lower()
+        raise ValueError(f"Language must be one of {allowed} (got: {v})")
     
     @field_validator("degree")
     @classmethod
