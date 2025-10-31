@@ -166,7 +166,8 @@ class TwilioAdapter:
         call_sid: str,
         greeting_text: Optional[str] = None,
         gather_url: Optional[str] = None,
-        language: str = "en-IN"
+        language: str = "en-IN",
+        use_sarvam_ai: bool = True
     ) -> str:
         """
         Answer an inbound call and generate TwiML response.
@@ -176,6 +177,7 @@ class TwilioAdapter:
             greeting_text: Optional greeting message to speak
             gather_url: URL to send user speech input
             language: Language code for speech recognition
+            use_sarvam_ai: Whether to use Sarvam AI for TTS
             
         Returns:
             twiml: TwiML XML string for call handling
@@ -187,7 +189,19 @@ class TwilioAdapter:
             
             # Add greeting if provided
             if greeting_text:
-                response.say(greeting_text, voice="Polly.Aditi", language=language)
+                if use_sarvam_ai:
+                    # Use Sarvam AI for natural Indian voice
+                    audio_url = await self._generate_sarvam_audio(greeting_text, language)
+                    if audio_url:
+                        response.play(audio_url)
+                        logger.info(f"Using Sarvam AI audio for call {call_sid}")
+                    else:
+                        # Fallback to Twilio voice
+                        response.say(greeting_text, voice="Polly.Aditi", language=language)
+                        logger.warning(f"Sarvam AI failed, using Twilio voice for call {call_sid}")
+                else:
+                    # Use Twilio's built-in voice
+                    response.say(greeting_text, voice="Polly.Aditi", language=language)
             
             # Gather user input if URL provided
             if gather_url:
@@ -207,6 +221,91 @@ class TwilioAdapter:
             
         except Exception as e:
             logger.error(f"Failed to answer call {call_sid}: {str(e)}")
+            raise
+    
+    async def _generate_sarvam_audio(self, text: str, language: str = "hi-IN") -> Optional[str]:
+        """
+        Generate audio using Sarvam AI and return URL for Twilio to play.
+        
+        Args:
+            text: Text to convert to speech
+            language: Language code
+            
+        Returns:
+            URL to audio file or None if failed
+        """
+        try:
+            # Import Sarvam adapter
+            from app.integrations.sarvam_speech_adapter import SarvamSpeechAdapter
+            from app.integrations.speech_adapter import VoiceGender
+            
+            # Initialize Sarvam adapter with API key from environment
+            api_key = os.getenv("SARVAM_API_KEY")
+            api_url = "https://api.sarvam.ai"
+            sarvam_adapter = SarvamSpeechAdapter(api_key=api_key, api_url=api_url)
+            
+            if not sarvam_adapter.enabled:
+                logger.warning("Sarvam AI not enabled, cannot generate audio")
+                return None
+            
+            # Generate audio with Sarvam AI
+            audio_data = await sarvam_adapter.synthesize_speech(
+                text=text,
+                language=language,
+                voice_gender=VoiceGender.FEMALE,  # Anushka voice
+                speaking_rate=1.0
+            )
+            
+            if not audio_data:
+                logger.error("Sarvam AI returned empty audio data")
+                return None
+            
+            # Save audio file and return URL
+            audio_url = await self._save_and_serve_audio(audio_data, text)
+            return audio_url
+            
+        except Exception as e:
+            logger.error(f"Failed to generate Sarvam AI audio: {str(e)}")
+            return None
+    
+    async def _save_and_serve_audio(self, audio_data: bytes, text: str) -> str:
+        """
+        Save audio data to file and return URL for Twilio to access.
+        
+        Args:
+            audio_data: Audio bytes from Sarvam AI
+            text: Original text (for filename)
+            
+        Returns:
+            URL to audio file
+        """
+        try:
+            import hashlib
+            import os
+            from config import settings
+            
+            # Create audio directory if it doesn't exist
+            audio_dir = "static/audio"
+            os.makedirs(audio_dir, exist_ok=True)
+            
+            # Generate filename based on text hash
+            text_hash = hashlib.md5(text.encode()).hexdigest()[:8]
+            filename = f"sarvam_{text_hash}.wav"
+            filepath = os.path.join(audio_dir, filename)
+            
+            # Save audio file
+            with open(filepath, "wb") as f:
+                f.write(audio_data)
+            
+            # Return URL for Twilio to access
+            base_url = settings.base_url or "http://localhost:8000"
+            audio_url = f"{base_url}/static/audio/{filename}"
+            
+            logger.info(f"Saved Sarvam AI audio: {audio_url}")
+            return audio_url
+            
+        except Exception as e:
+            logger.error(f"Failed to save audio file: {str(e)}")
             raise
     
     async def transfer_call(
