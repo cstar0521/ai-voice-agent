@@ -5,8 +5,6 @@ Automatically switches based on availability and cost optimization.
 
 import logging
 from typing import Optional, Dict, Any, List
-from groq import Groq
-from openai import OpenAI
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -29,18 +27,30 @@ class SmartLLMService:
         # Initialize Groq if API key is available
         if settings.groq_api_key:
             try:
+                from groq import Groq
                 self.groq_client = Groq(api_key=settings.groq_api_key)
-                logger.info("✅ Groq client initialized")
+                logger.info("✅ Groq client initialized successfully")
             except Exception as e:
                 logger.error(f"❌ Failed to initialize Groq: {e}")
+                self.groq_client = None
+        else:
+            self.groq_client = None
         
-        # OpenAI disabled - using Groq only
-        self.openai_client = None
-        logger.info("🚫 OpenAI disabled - using Groq only")
+        # Initialize OpenAI as fallback if API key is available  
+        if settings.openai_api_key:
+            try:
+                from openai import OpenAI
+                self.openai_client = OpenAI(api_key=settings.openai_api_key)
+                logger.info("✅ OpenAI client initialized successfully")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize OpenAI: {e}")
+                self.openai_client = None
+        else:
+            self.openai_client = None
         
         # Check if at least one client is available
         if not self.groq_client and not self.openai_client:
-            raise Exception("❌ No LLM provider available! Please configure Groq or OpenAI API keys.")
+            raise Exception("❌ No LLM provider available! Please configure Groq or OpenAI API keys in your .env file.")
     
     async def generate_response(
         self,
@@ -194,8 +204,8 @@ class SmartLLMService:
             "groq_available": self.groq_client is not None,
             "openai_available": self.openai_client is not None,
             "primary_provider": "groq" if settings.use_groq_primary else "openai",
-            "groq_model": settings.groq_model,
-            "openai_model": "gpt-3.5-turbo"
+            "groq_model": settings.groq_model if self.groq_client else None,
+            "openai_model": "gpt-3.5-turbo" if self.openai_client else None
         }
 
 
@@ -206,6 +216,6 @@ _smart_llm_service: Optional[SmartLLMService] = None
 def get_smart_llm_service() -> SmartLLMService:
     """Get or create SmartLLM service instance."""
     global _smart_llm_service
-    if _smart_llm_service is None:
-        _smart_llm_service = SmartLLMService()
+    # Always create a new instance to avoid cached initialization errors
+    _smart_llm_service = SmartLLMService()
     return _smart_llm_service

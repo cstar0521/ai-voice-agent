@@ -467,6 +467,66 @@ class TwilioAdapter:
             logger.error(f"Error validating webhook signature: {str(e)}")
             return False
     
+    async def generate_conversation_twiml(
+        self,
+        text: str,
+        gather_url: str,
+        language: str = "hi-IN",
+        use_sarvam_ai: bool = True
+    ) -> str:
+        """
+        Generate TwiML for conversation flow with AI response.
+        
+        Args:
+            text: AI response text to speak
+            gather_url: URL to send user speech input
+            language: Language code for speech recognition
+            use_sarvam_ai: Whether to use Sarvam AI for TTS
+            
+        Returns:
+            twiml: TwiML XML string for conversation
+        """
+        try:
+            response = VoiceResponse()
+            
+            # Add AI response
+            if use_sarvam_ai:
+                # Use Sarvam AI for natural Indian voice
+                audio_url = await self._generate_sarvam_audio(text, language)
+                if audio_url:
+                    response.play(audio_url)
+                    logger.info(f"Using Sarvam AI audio for response: '{text[:50]}...'")
+                else:
+                    # Fallback to Twilio voice
+                    response.say(text, voice="Polly.Aditi", language=language)
+                    logger.warning(f"Sarvam AI failed, using Twilio voice for: '{text[:50]}...'")
+            else:
+                # Use Twilio's built-in voice
+                response.say(text, voice="Polly.Aditi", language=language)
+            
+            # Continue gathering speech
+            gather = Gather(
+                input="speech",
+                action=gather_url,
+                method="POST",
+                language=language,
+                speech_timeout="auto",
+                timeout=10
+            )
+            gather.say("कृपया अपना जवाब दें।", voice="Polly.Aditi", language=language)
+            response.append(gather)
+            
+            # Fallback if no response
+            response.say("धन्यवाद! हमारा एक्सपर्ट जल्दी आपसे संपर्क करेगा।", voice="Polly.Aditi", language=language)
+            
+            twiml = str(response)
+            logger.info(f"Generated conversation TwiML")
+            return twiml
+            
+        except Exception as e:
+            logger.error(f"Failed to generate conversation TwiML: {str(e)}")
+            raise
+
     async def get_call_details(self, call_sid: str) -> Dict[str, Any]:
         """
         Retrieve call details from Twilio.
