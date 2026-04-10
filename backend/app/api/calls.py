@@ -224,28 +224,63 @@ async def handle_inbound_webhook(
         )
         lead = await lead_repo.create(lead)
     
-    # Create call record
-    call = Call(
-        lead_id=lead.lead_id,
-        call_sid=call_sid,
-        direction="inbound",
-        status="connected",
-        start_time=datetime.utcnow()
-    )
-    call = await call_repo.create(call)
+    # Check if call record already exists (for outbound calls)
+    existing_call = await call_repo.get_by_call_sid(call_sid)
     
-    # Generate TwiML response
-    greeting = "Hello! Thank you for calling. How can I help you with your education loan today?"
+    if existing_call:
+        # Update existing call to connected status
+        call = await call_repo.update(existing_call.call_id, {
+            "status": "connected",
+            "start_time": datetime.utcnow()
+        })
+        logger.info(f"Updated existing call {call_sid} to connected status")
+    else:
+        # Create new call record (for direct inbound calls)
+        call = Call(
+            lead_id=lead.lead_id,
+            call_sid=call_sid,
+            direction="inbound",
+            status="connected",
+            start_time=datetime.utcnow()
+        )
+        call = await call_repo.create(call)
+        logger.info(f"Created new call record for {call_sid}")
+    
+    # Generate TwiML response with Sarvam AI
+    greeting = "नमस्ते! मैं एजुकेशन लोन एडवाइजर हूँ। क्या आप विदेश में पढ़ाई के लिए लोन के बारे में जानना चाहते हैं?"
     gather_url = f"{request.base_url}api/v1/calls/speech/webhook"
     
-    twiml = await get_twilio_adapter().answer_call(
-        call_sid=call_sid,
-        greeting_text=greeting,
-        gather_url=gather_url,
-        language="en-IN"
-    )
+    logger.info(f"Generating TwiML for call {call_sid} with Sarvam AI")
     
-    return Response(content=twiml, media_type="application/xml")
+    try:
+        # Try Sarvam AI first
+        twiml = await get_twilio_adapter().answer_call(
+            call_sid=call_sid,
+            greeting_text=greeting,
+            gather_url=gather_url,
+            language="hi-IN",
+            use_sarvam_ai=True  # Enable Sarvam AI
+        )
+        
+        logger.info(f"✅ Generated Sarvam AI TwiML for call {call_sid}")
+        return Response(content=twiml, media_type="application/xml")
+        
+    except Exception as e:
+        logger.error(f"❌ Sarvam AI failed for call {call_sid}: {e}")
+        
+        # Fallback to working Twilio voice
+        fallback_twiml = '''<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="Polly.Aditi" language="hi-IN">नमस्ते! मैं एजुकेशन लोन एडवाइजर हूँ। क्या आप विदेश में पढ़ाई के लिए लोन के बारे में जानना चाहते हैं?</Say>
+    <Pause length="2"/>
+    <Gather input="speech" timeout="10" language="hi-IN">
+        <Say voice="Polly.Aditi" language="hi-IN">कृपया अपना जवाब दें।</Say>
+    </Gather>
+    <Say voice="Polly.Aditi" language="hi-IN">धन्यवाद! अलविदा।</Say>
+</Response>'''
+        
+        logger.info(f"🔄 Using Twilio fallback for call {call_sid}")
+        return Response(content=fallback_twiml, media_type="application/xml")
 
 
 @router.post("/status/webhook")
@@ -351,7 +386,7 @@ async def handle_speech_result_webhook(
     """
     Handle Twilio speech recognition result webhook.
     
-    Processes transcribed speech from user.
+    Processes transcribed speech from user and continues conversation flow.
     
     Args:
         request: FastAPI request object
@@ -378,22 +413,146 @@ async def handle_speech_result_webhook(
     
     # Parse webhook data
     webhook_data = TwilioSpeechResultWebhook(**params)
+    call_sid = webhook_data.CallSid
+    speech_result = webhook_data.SpeechResult
     
-    db = database.get_database()
-    conversation_repo = ConversationRepository(db)
+    logger.info(f"Processing speech result for call {call_sid}: '{speech_result}'")
     
-    # Process speech result
-    result = await TwilioWebhookHandler.handle_speech_result(
-        webhook_data, conversation_repo
-    )
+    try:
+        db = database.get_database()
+        conversation_repo = ConversationRepository(db)
+        call_repo = CallRepository(db)
+        
+        # Get call record to find call_id
+        call = await call_repo.get_by_call_sid(call_sid)
+        if not call:
+            logger.error(f"Call not found for SID: {call_sid}")
+            # Return generic error response
+            from twilio.twiml.voice_response import VoiceResponse
+            response = VoiceResponse()
+            response.say("Sorry, there was an error. Please try again later.")
+            return Response(content=str(response), media_type="application/xml")
+        
+        # Process speech result and store in conversation
+        result = await TwilioWebhookHandler.handle_speech_result(
+            webhook_data, conversation_repo
+        )
+        
+        # Generate AI response using direct HTTP LLM service
+        from app.services.conversation_context import ConversationContextManager
+        from app.services.direct_llm import get_direct_llm
+        
+        # Initialize services
+        context_manager = ConversationContextManager()
+        llm_service = get_direct_llm()
+        
+        # Get or create conversation context
+        context = context_manager.get_context(call.call_id)
+        if not context:
+            # Create context if not exists
+            lead_repo = LeadRepository(db)
+            lead = await lead_repo.get_by_id(call.lead_id)
+            context = context_manager.create_context(
+                call_id=call.call_id,
+                lead_id=call.lead_id,
+                language=lead.language if lead else "hinglish"
+            )
+        
+        # Add user turn to context
+        context.add_turn(
+            speaker="user",
+            transcript=speech_result,
+            confidence=webhook_data.Confidence
+        )
+        
+        # Generate conversation messages for LLM
+        messages = [
+            {
+                "role": "system",
+                "content": """You are a helpful education loan advisor speaking in Hindi/Hinglish. 
+                You help students get loans for studying abroad. Keep responses short (1-2 sentences).
+                Ask one question at a time to collect information about:
+                1. What degree they want to pursue
+                2. Which country they want to study in
+                3. Do they have an offer letter
+                4. How much loan amount they need
+                5. Their family income (ITR)
+                
+                Be conversational and friendly. Mix Hindi and English naturally."""
+            }
+        ]
+        
+        # Add recent conversation history
+        for turn in context.get_recent_turns(3):
+            role = "user" if turn.speaker == "user" else "assistant"
+            messages.append({
+                "role": role,
+                "content": turn.transcript
+            })
+        
+        # Generate AI response
+        ai_response = await llm_service.generate_response(messages)
+        
+        # Add agent turn to context
+        context.add_turn(
+            speaker="agent",
+            transcript=ai_response
+        )
+        
+        logger.info(f"Generated AI response for call {call_sid}: '{ai_response}'")
+        
+        # Generate TwiML with Sarvam AI voice
+        gather_url = f"{request.base_url}api/v1/calls/speech/webhook"
+        
+        try:
+            # Try Sarvam AI first
+            twiml = await get_twilio_adapter().generate_conversation_twiml(
+                text=ai_response,
+                gather_url=gather_url,
+                language="hi-IN",
+                use_sarvam_ai=True
+            )
+            
+            logger.info(f"✅ Generated Sarvam AI TwiML response for call {call_sid}")
+            return Response(content=twiml, media_type="application/xml")
+            
+        except Exception as e:
+            logger.error(f"❌ Sarvam AI failed for call {call_sid}: {e}")
+            
+            # Fallback to Twilio voice
+            from twilio.twiml.voice_response import VoiceResponse, Gather
+            
+            response = VoiceResponse()
+            
+            # Add AI response
+            response.say(ai_response, voice="Polly.Aditi", language="hi-IN")
+            
+            # Continue gathering speech
+            gather = Gather(
+                input="speech",
+                timeout=10,
+                language="hi-IN",
+                action=gather_url,
+                method="POST"
+            )
+            gather.say("कृपया अपना जवाब दें।", voice="Polly.Aditi", language="hi-IN")
+            response.append(gather)
+            
+            # Fallback if no response
+            response.say("धन्यवाद! हमारा एक्सपर्ट जल्दी आपसे संपर्क करेगा।", voice="Polly.Aditi", language="hi-IN")
+            
+            logger.info(f"🔄 Using Twilio fallback for call {call_sid}")
+            return Response(content=str(response), media_type="application/xml")
     
-    # Generate TwiML response (placeholder - will be enhanced with conversation manager)
-    from twilio.twiml.voice_response import VoiceResponse
-    
-    response = VoiceResponse()
-    response.say("Thank you for your response. We are processing your information.")
-    
-    return Response(content=str(response), media_type="application/xml")
+    except Exception as e:
+        logger.error(f"Error processing speech webhook for call {call_sid}: {str(e)}", exc_info=True)
+        
+        # Return error response
+        from twilio.twiml.voice_response import VoiceResponse
+        response = VoiceResponse()
+        response.say("माफ करें, कुछ तकनीकी समस्या है। कृपया बाद में कॉल करें।", voice="Polly.Aditi", language="hi-IN")
+        
+        return Response(content=str(response), media_type="application/xml")
 
 
 @router.post("/{call_id}/hangup", response_model=HangupResponse)

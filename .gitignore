@@ -92,3 +92,16 @@ coverage/
 # Temporary files
 tmp/
 temp/
+
+# Audio files (may contain sensitive content)
+*.wav
+*.mp3
+*.m4a
+static/audio/
+
+# Test files with potential sensitive data
+test_*_output.*
+sarvam_test.*
+
+# Generated files
+backend/static/audio/

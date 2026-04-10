@@ -14,12 +14,17 @@ class Settings(BaseSettings):
     # OpenAI
     openai_api_key: Optional[str] = None
     
+    # Groq (Primary LLM - cheaper alternative)
+    groq_api_key: Optional[str] = None
+    groq_model: str = "llama-3.1-8b-instant"  # Fast and cheap model
+    use_groq_primary: bool = True  # Use Groq first, fallback to OpenAI
+    
     # Speech Provider
     speech_provider: str = "sarvam_ai"  # sarvam_ai, google_cloud, or aws
     
     # Sarvam AI
     sarvam_api_key: Optional[str] = None
-    sarvam_api_url: str = "https://api.sarvam.ai/v1"
+    sarvam_api_url: str = "https://api.sarvam.ai"
     
     # Sarvam AI Model Configuration
     sarvam_tts_model: str = "bulbul:v1"
@@ -62,6 +67,9 @@ class Settings(BaseSettings):
     
     # Environment
     environment: str = "development"
+    
+    # Logging
+    log_level: str = "INFO"
     
     # Webhook URLs (for ngrok in development)
     webhook_base_url: Optional[str] = None  # Set this to your ngrok URL

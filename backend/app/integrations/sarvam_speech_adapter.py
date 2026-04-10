@@ -35,8 +35,18 @@ class SarvamSpeechAdapter(SpeechAdapter):
             api_key: Sarvam AI API key
             api_url: Sarvam AI API base URL
         """
+        # Try to get from parameter, then env, then config
         self.api_key = api_key or os.getenv("SARVAM_API_KEY")
-        self.api_url = api_url or os.getenv("SARVAM_API_URL", "https://api.sarvam.ai/v1")
+        self.api_url = api_url or os.getenv("SARVAM_API_URL", "https://api.sarvam.ai")
+        
+        # If still not found, try importing from config
+        if not self.api_key:
+            try:
+                from config import settings
+                self.api_key = settings.sarvam_api_key
+                self.api_url = settings.sarvam_api_url
+            except:
+                pass
         
         if not self.api_key:
             logger.warning("Sarvam AI API key not provided. TTS/ASR will be disabled.")
@@ -46,9 +56,9 @@ class SarvamSpeechAdapter(SpeechAdapter):
             logger.info("Sarvam AI Speech adapter initialized")
         
         # Model configurations
-        self.tts_model = os.getenv("SARVAM_TTS_MODEL", "bulbul:v1")
+        self.tts_model = os.getenv("SARVAM_TTS_MODEL", "bulbul:v2")
         self.asr_model = os.getenv("SARVAM_ASR_MODEL", "saaras:v1")
-        self.default_speaker = os.getenv("SARVAM_VOICE_SPEAKER", "meera")
+        self.default_speaker = os.getenv("SARVAM_VOICE_SPEAKER", "anushka")
         
         # Language mappings
         self.language_map = {
@@ -61,19 +71,19 @@ class SarvamSpeechAdapter(SpeechAdapter):
             "te-IN": "te-IN"
         }
         
-        # Voice mappings for different languages and genders
+        # Voice mappings for different languages and genders (bulbul:v2 compatible)
         self.voice_map = {
             "hi-IN": {
-                VoiceGender.FEMALE: "meera",
-                VoiceGender.MALE: "arjun"
+                VoiceGender.FEMALE: "anushka",
+                VoiceGender.MALE: "abhilash"
             },
             "en-IN": {
-                VoiceGender.FEMALE: "kavya",
-                VoiceGender.MALE: "raj"
+                VoiceGender.FEMALE: "manisha",
+                VoiceGender.MALE: "karun"
             },
             "te-IN": {
-                VoiceGender.FEMALE: "lakshmi",
-                VoiceGender.MALE: "ravi"
+                VoiceGender.FEMALE: "vidya",
+                VoiceGender.MALE: "hitesh"
             }
         }
     
@@ -105,7 +115,7 @@ class SarvamSpeechAdapter(SpeechAdapter):
             url = f"{self.api_url}/speech-to-text"
             
             headers = {
-                "Authorization": f"Bearer {self.api_key}",
+                "api-subscription-key": self.api_key,
                 "Content-Type": "application/json"
             }
             
@@ -212,18 +222,15 @@ class SarvamSpeechAdapter(SpeechAdapter):
             url = f"{self.api_url}/text-to-speech"
             
             headers = {
-                "Authorization": f"Bearer {self.api_key}",
+                "api-subscription-key": self.api_key,
                 "Content-Type": "application/json"
             }
             
             payload = {
-                "model": self.tts_model,
+                "inputs": [text],
+                "target_language_code": sarvam_language,
                 "speaker": voice_name,
-                "text": text,
-                "language_code": sarvam_language,
-                "speed": speaking_rate,
-                "pitch": 0,  # Default pitch
-                "loudness": 0  # Default loudness
+                "model": self.tts_model
             }
             
             async with aiohttp.ClientSession() as session:
@@ -231,9 +238,9 @@ class SarvamSpeechAdapter(SpeechAdapter):
                     if response.status == 200:
                         result = await response.json()
                         
-                        # Get audio URL or base64 data
-                        if "audio" in result:
-                            audio_base64 = result["audio"]
+                        # Get audio data from audios array
+                        if "audios" in result and result["audios"]:
+                            audio_base64 = result["audios"][0]
                             import base64
                             audio_data = base64.b64decode(audio_base64)
                             
@@ -328,6 +335,31 @@ class SarvamSpeechAdapter(SpeechAdapter):
         """Get list of supported voices for a language."""
         sarvam_language = self.language_map.get(language.lower(), "hi-IN")
         return list(self.voice_map.get(sarvam_language, {}).values())
+    
+    async def synthesize_speech_with_cache(
+        self,
+        text: str,
+        language: str = "hi-IN",
+        voice_gender: VoiceGender = VoiceGender.FEMALE,
+        speaking_rate: float = 1.0,
+        use_cache: bool = True
+    ) -> Optional[str]:
+        """
+        Convert text to speech with caching support (basic implementation).
+        
+        Args:
+            text: Text to synthesize
+            language: Language code
+            voice_gender: Voice gender preference
+            speaking_rate: Speech rate (0.5 to 2.0)
+            use_cache: Whether to use audio caching (ignored for now)
+            
+        Returns:
+            None (direct audio synthesis, no URL returned)
+        """
+        # For now, just do direct synthesis without caching
+        audio_data = await self.synthesize_speech(text, language, voice_gender, speaking_rate)
+        return None  # Return None since we're not implementing URL-based caching
 
 
 # Factory function to create the appropriate speech adapter

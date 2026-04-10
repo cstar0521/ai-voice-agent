@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from fastapi.staticfiles import StaticFiles
 import logging
 import time
 import uuid
@@ -197,6 +198,13 @@ async def shutdown_event():
 # Include API routes
 from app.api import api_router
 app.include_router(api_router)
+
+# Test endpoints removed - using production endpoints
+
+# Mount static files for serving Sarvam AI audio
+import os
+os.makedirs("static/audio", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 @app.get("/")

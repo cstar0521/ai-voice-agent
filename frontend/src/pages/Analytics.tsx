@@ -64,17 +64,17 @@ const Analytics: React.FC = () => {
 
   const sentimentData = metrics
     ? [
-        { name: 'Positive', value: metrics.sentiment_distribution.positive },
-        { name: 'Neutral', value: metrics.sentiment_distribution.neutral },
-        { name: 'Negative', value: metrics.sentiment_distribution.negative },
-      ]
+      { name: 'Positive', value: metrics.sentiment_distribution.positive },
+      { name: 'Neutral', value: metrics.sentiment_distribution.neutral },
+      { name: 'Negative', value: metrics.sentiment_distribution.negative },
+    ]
     : [];
 
   const languageData = metrics
     ? Object.entries(metrics.language_usage).map(([name, value]) => ({
-        name,
-        value,
-      }))
+      name,
+      value,
+    }))
     : [];
 
   return (
@@ -191,9 +191,12 @@ const Analytics: React.FC = () => {
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={({ name, percent }) =>
-                      `${name}: ${(percent * 100).toFixed(0)}%`
-                    }
+                    label={(props: any) => {
+                      const { name, value, payload } = props;
+                      const total = sentimentData.reduce((sum, entry) => sum + entry.value, 0);
+                      const percent = total > 0 ? (value / total) * 100 : 0;
+                      return `${name}: ${percent.toFixed(0)}%`;
+                    }}
                     outerRadius={80}
                     fill="#8884d8"
                     dataKey="value"
